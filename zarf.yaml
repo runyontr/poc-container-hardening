@@ -9,12 +9,20 @@ metadata:
   architecture: amd64
 
 components:
-- name: download
+# - name: download-binaries
+#   files:
+#   - source: https://github.com/anchore/grype/releases/download/v0.57.1/grype_0.57.1_darwin_arm64.tar.gz
+#     executable: true
+#     target: grype
+- name: download-artifacts
   required: true
-  # images: # maybe theres a way to do this from zarf already, but want to get these images available local during deploy
-  #   - "docker.io/grafana/loki@sha256:0c86eba2dee75220d99b604503a91bc07532d238454fcfd712ec60d9d8a43c5d"
-  #   - "registry1.dso.mil/ironbank/redhat/ubi/ubi8:8.7"
+  images: # maybe theres a way to do this from zarf already, but want to get these images available local during deploy
+    # I think pulling by sha is broken
+    # - docker.io/grafana/loki@sha256:0c86eba2dee75220d99b604503a91bc07532d238454fcfd712ec60d9d8a43c5d
+    # - docker.io/grafana/loki:2.7.3
+    # - registry1.dso.mil/ironbank/redhat/ubi/ubi8:8.7
   files:
+  # these files are needed in the build process
   - source: https://repo1.dso.mil/dsop/opensource/grafana/loki/-/raw/development/Dockerfile
     target: Dockerfile
   - source: loki.tar.gz
@@ -23,8 +31,9 @@ components:
     target: baseimage.tar.gz
   - source: https://repo1.dso.mil/dsop/opensource/grafana/loki/-/raw/development/config/loki-docker-config.yaml
     target: config/loki-docker-config.yaml
-  vex: # to be implemented by Dash Days
-    - justifications.vex
+  vex: # to be implemented by Dash Days, see https://github.com/defenseunicorns/zarf/blob/feature/add-vex/examples/component-vex/zarf.yaml
+    - name: image-justifications
+      path: justifications.vex
   actions:
     onCreate:
       before:
@@ -45,7 +54,18 @@ components:
   actions:
     onDeploy:
       after:
-      - cmd: "docker build . -t fakeironbank/dsop/opensource/grafana/loki:2.7.3" 
+      - cmd: "docker build . -t hardenedimage.dev/dsop/opensource/grafana/loki:2.7.3" 
         description: "Assume Ashton has docker in his environment for now, but could embed podman or some daemonless build tool"
-
-    
+- name: scan
+  required: true
+  actions:
+    onDeploy:
+      before:
+      - cmd: which grype
+        description: "fail if we don't have grype and make go install it"
+      after:
+      - cmd: ./zarf package inspect *.tar.zst --sbom-out sboms
+        description: Extract the sboms from the zarf package
+      - cmd: cat sboms/**/*.json | grype --file vulnerabilities.json -o json
+        description: Provide vulnerabilities for the zarf package
+      - cmd: grype --file base-vulnerabilities.json -o json hardenedimage.dev/dsop/opensource/grafana/loki:2.7.3
