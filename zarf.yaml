@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/defenseunicorns/zarf/bigbang-component/zarf.schema.json
+kind: ZarfPackageConfig
+metadata:
+  name: container-building-example
+  description: "Build Loki Image"
+  version: 2.7.3
+  url: https://repo1.dso.mil/dsop/opensource/grafana/loki
+  # Big Bang / Iron Bank are only amd64
+  architecture: amd64
+
+components:
+- name: download
+  required: true
+  # images: # maybe theres a way to do this from zarf already, but want to get these images available local during deploy
+  #   - "docker.io/grafana/loki@sha256:0c86eba2dee75220d99b604503a91bc07532d238454fcfd712ec60d9d8a43c5d"
+  #   - "registry1.dso.mil/ironbank/redhat/ubi/ubi8:8.7"
+  files:
+  - source: https://repo1.dso.mil/dsop/opensource/grafana/loki/-/raw/development/Dockerfile
+    target: Dockerfile
+  - source: loki.tar.gz
+    target: loki.tar.gz
+  - source: baseimage.tar.gz
+    target: baseimage.tar.gz
+  - source: https://repo1.dso.mil/dsop/opensource/grafana/loki/-/raw/development/config/loki-docker-config.yaml
+    target: config/loki-docker-config.yaml
+  vex: # to be implemented by Dash Days
+    - justifications.vex
+  actions:
+    onCreate:
+      before:
+        - cmd: docker pull docker.io/grafana/loki@sha256:0c86eba2dee75220d99b604503a91bc07532d238454fcfd712ec60d9d8a43c5d
+          description: "Maybe theres a way to get these out of the zarf package without these commands for now"
+        - cmd: docker save docker.io/grafana/loki@sha256:0c86eba2dee75220d99b604503a91bc07532d238454fcfd712ec60d9d8a43c5d -o loki.tar.gz
+        - cmd: docker pull registry1.dso.mil/ironbank/redhat/ubi/ubi8:8.7
+        - cmd: docker save registry1.dso.mil/ironbank/redhat/ubi/ubi8:8.7 -o baseimage.tar.gz
+      after:
+        - cmd: docker tag docker.io/grafana/loki@sha256:0c86eba2dee75220d99b604503a91bc07532d238454fcfd712ec60d9d8a43c5d grafana/loki:2.7.3
+    onDeploy:
+      before:
+        - cmd: docker load -i baseimage.tar.gz
+        - cmd: docker load -i loki.tar.gz
+        - cmd: docker tag docker.io/grafana/loki@sha256:0c86eba2dee75220d99b604503a91bc07532d238454fcfd712ec60d9d8a43c5d grafana/loki:2.7.3
+- name: build
+  required: true
+  actions:
+    onDeploy:
+      after:
+      - cmd: "docker build . -t fakeironbank/dsop/opensource/grafana/loki:2.7.3" 
+        description: "Assume Ashton has docker in his environment for now, but could embed podman or some daemonless build tool"
+
+    
